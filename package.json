@@ -8,13 +8,21 @@
   },
   "scripts": {
     "start": "node src/cli.js",
-    "test": "vitest"
+    "test": "vitest",
+    "postinstall": "patch-package"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wyote4094/rendel.git"
   },
-  "keywords": ["strudel", "audio", "renderer", "cli", "wav", "mp3"],
+  "keywords": [
+    "strudel",
+    "audio",
+    "renderer",
+    "cli",
+    "wav",
+    "mp3"
+  ],
   "author": "",
   "license": "MIT",
   "type": "module",
@@ -24,5 +32,15 @@
   "bugs": {
     "url": "https://github.com/wyote4094/rendel/issues"
   },
-  "homepage": "https://github.com/wyote4094/rendel#readme"
+  "homepage": "https://github.com/wyote4094/rendel#readme",
+  "dependencies": {
+    "@strudel/core": "^1.2.6",
+    "@strudel/mini": "^1.2.6",
+    "@strudel/transpiler": "^1.2.6",
+    "@strudel/webaudio": "^1.3.0",
+    "node-web-audio-api": "^1.0.9"
+  },
+  "devDependencies": {
+    "patch-package": "^8.0.1"
+  }
 }
