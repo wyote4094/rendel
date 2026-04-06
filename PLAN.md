@@ -42,17 +42,17 @@ Take a `.js` file containing Strudel pattern code, run it headlessly via Node.js
 
 ## Milestones
 
-### Phase 1 — Project Setup
-- [ ] Initialize GitHub repo (`rendel`)
-- [ ] `npm init` + basic project structure
-- [ ] Add `.gitignore`, `README.md`, `LICENSE`
-- [ ] Pin Node.js version via `.nvmrc` / `engines` field
+### Phase 1 — Project Setup ✓
+- [x] Initialize GitHub repo (`rendel`)
+- [x] `npm init` + basic project structure
+- [x] Add `.gitignore`, `README.md`, `LICENSE`
+- [x] Pin Node.js version via `.nvmrc` / `engines` field
 
-### Phase 2 — Core Renderer
-- [ ] Research Strudel's npm packages (`@strudel/core`, `@strudel/webaudio`)
-- [ ] Implement offline audio context rendering in Node.js
-- [ ] Write a minimal working render pipeline (sine tone as smoke test)
-- [ ] Evaluate `node-web-audio-api` as the OfflineAudioContext polyfill
+### Phase 2 — Core Renderer ✓
+- [x] Research Strudel's npm packages (`@strudel/core`, `@strudel/webaudio`)
+- [x] Implement offline audio context rendering in Node.js
+- [x] Write a minimal working render pipeline (sine tone as smoke test)
+- [x] Evaluate `node-web-audio-api` as the OfflineAudioContext polyfill
 
 ### Phase 3 — CLI Interface
 - [ ] Wire up CLI argument parsing (`commander` or `minimist`)
