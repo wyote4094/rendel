@@ -1,0 +1,67 @@
+Great question. Yes, Go could be used, but it's not the easiest path. Let me break this down honestly:
+
+---
+
+**Why the CPU spikes on strudel.cc**
+- Strudel runs entirely in the browser via Web Audio API — synthesis, scheduling, and pattern evaluation all happen in real time on your CPU
+- `supersaw` is particularly expensive because it stacks multiple oscillators per voice
+- The echo and reverb (`room`, `size`) add convolution overhead on top
+
+**Quick fixes before building anything:**
+- Open Chrome's `chrome://flags` and enable **`#enable-webgpu`** — offloads some audio processing
+- In Strudel, try replacing `supersaw` with `sawtooth` — far cheaper CPU-wise
+- Close all other tabs — Web Audio competes with everything
+- Use Chrome over Firefox; its Web Audio implementation is more optimized
+
+---
+
+**Writing a dedicated renderer — is Go a good fit?**
+
+Go can produce audio files, but the ecosystem for music/synthesis is thin. You'd essentially be building a synth engine from scratch. Realistically:
+
+| Language | Verdict |
+|---|---|
+| **Go** | Possible but painful — very few audio/DSP libraries |
+| **Python** | Good with `music21` + `fluidsynth` for MIDI-based rendering |
+| **JavaScript (Node.js)** | Best fit — reuses Strudel's own engine headlessly |
+| **SuperCollider** | Native, extremely powerful, Tidal Cycles runs on it |
+
+---
+
+**The most practical approach: headless Node.js renderer**
+
+Since Strudel is JavaScript, you can run it outside the browser using Node.js + an offline audio context, render the audio buffer for exactly N minutes, and write it to a WAV/MP3 file. No browser needed, no CPU spikes, deterministic output.
+
+Here's a rough architecture:
+
+```
+┌─────────────────────┐
+│   your .strudel.js  │
+│   pattern file      │
+└────────┬────────────┘
+         │
+         ▼
+┌─────────────────────┐
+│  Node.js renderer   │
+│  - OfflineAudioCtx  │
+│  - @strudel/core    │
+│  - @strudel/webaudio│
+└────────┬────────────┘
+         │
+         ▼
+┌─────────────────────┐
+│  ffmpeg             │
+│  WAV → MP3          │
+└─────────────────────┘
+```
+
+Want me to build this out? I can write a Node.js CLI tool where you run:
+
+```bash
+node render.js --file mysong.js --duration 240 --output song.mp3
+```
+
+It would render your exact Strudel code offline at full quality with no browser involved. That's likely the cleanest solution for your use case.
+
+My top pick: Rendel — it's short, memorable, clearly implies rendering, and has Strudel baked right into the name. Easy to type as a CLI command too:
+bashrendel --file mysong.js --duration 240 --output song.mp3

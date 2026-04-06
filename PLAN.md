@@ -1,0 +1,112 @@
+# Rendel — Project Plan
+
+**Rendel** is a CLI tool that renders [Strudel](https://strudel.cc) pattern files to WAV/MP3 offline — no browser, no CPU spikes, deterministic output.
+
+---
+
+## Goal
+
+```bash
+rendel --file mysong.js --duration 240 --output song.mp3
+```
+
+Take a `.js` file containing Strudel pattern code, run it headlessly via Node.js, and export a high-quality audio file.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────┐
+│   mysong.js         │  ← user's Strudel pattern file
+└────────┬────────────┘
+         │
+         ▼
+┌─────────────────────┐
+│  rendel CLI         │
+│  - parses args      │
+│  - loads pattern    │
+│  - OfflineAudioCtx  │
+│  - @strudel/core    │
+│  - @strudel/webaudio│
+└────────┬────────────┘
+         │
+         ▼
+┌─────────────────────┐
+│  ffmpeg             │  ← WAV → MP3 conversion
+│  WAV → MP3/FLAC/etc │
+└─────────────────────┘
+```
+
+---
+
+## Milestones
+
+### Phase 1 — Project Setup
+- [ ] Initialize GitHub repo (`rendel`)
+- [ ] `npm init` + basic project structure
+- [ ] Add `.gitignore`, `README.md`, `LICENSE`
+- [ ] Pin Node.js version via `.nvmrc` / `engines` field
+
+### Phase 2 — Core Renderer
+- [ ] Research Strudel's npm packages (`@strudel/core`, `@strudel/webaudio`)
+- [ ] Implement offline audio context rendering in Node.js
+- [ ] Write a minimal working render pipeline (sine tone as smoke test)
+- [ ] Evaluate `node-web-audio-api` as the OfflineAudioContext polyfill
+
+### Phase 3 — CLI Interface
+- [ ] Wire up CLI argument parsing (`commander` or `minimist`)
+- [ ] `--file`, `--duration`, `--output`, `--samplerate` flags
+- [ ] Validate inputs and surface helpful errors
+
+### Phase 4 — Audio Export
+- [ ] Write raw PCM buffer to WAV (via `wav` or `audiobuffer-to-wav`)
+- [ ] Pipe to `ffmpeg` for MP3/FLAC/OGG conversion
+- [ ] Detect and warn if `ffmpeg` is not installed
+
+### Phase 5 — Polish
+- [ ] Progress bar / logging
+- [ ] Watch mode (`--watch`) for live re-renders on file save
+- [ ] Publish to npm as `rendel`
+- [ ] GitHub Actions CI (lint + test on push)
+
+---
+
+## Tech Stack
+
+| Concern | Choice |
+|---|---|
+| Runtime | Node.js 20+ |
+| Strudel engine | `@strudel/core`, `@strudel/webaudio` |
+| OfflineAudio polyfill | `node-web-audio-api` |
+| CLI parsing | `commander` |
+| WAV output | `audiobuffer-to-wav` |
+| Audio conversion | `ffmpeg` (system install) |
+| Testing | `vitest` |
+
+---
+
+## Open Questions
+
+- Can `@strudel/webaudio` run fully headlessly in Node.js, or does it require browser globals?
+- Is there an existing Strudel headless rendering example to build on?
+- Should synthesis happen via Strudel's built-in WebAudio synths, or via a separate soundfont/sampler path?
+
+---
+
+## Repo Structure (target)
+
+```
+rendel/
+├── src/
+│   ├── cli.js          ← entry point
+│   ├── renderer.js     ← core rendering logic
+│   └── export.js       ← WAV/MP3 file writing
+├── examples/
+│   └── demo.js         ← sample Strudel pattern
+├── test/
+│   └── renderer.test.js
+├── package.json
+├── README.md
+└── .gitignore
+```
