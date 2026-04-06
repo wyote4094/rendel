@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.wav
+*.mp3
+*.flac
+.env
+.DS_Store
+Thumbs.db

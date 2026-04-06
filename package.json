@@ -1,0 +1,28 @@
+{
+  "name": "rendel",
+  "version": "0.1.0",
+  "description": "Headless Strudel pattern renderer — export .js pattern files to WAV/MP3 from the command line",
+  "main": "src/cli.js",
+  "bin": {
+    "rendel": "src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/cli.js",
+    "test": "vitest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wyote4094/rendel.git"
+  },
+  "keywords": ["strudel", "audio", "renderer", "cli", "wav", "mp3"],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "bugs": {
+    "url": "https://github.com/wyote4094/rendel/issues"
+  },
+  "homepage": "https://github.com/wyote4094/rendel#readme"
+}
