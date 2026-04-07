@@ -1,4 +1,5 @@
 import './polyfill.js';
+import { fileURLToPath } from 'url';
 import {
   superdough,
   setAudioContext,
@@ -66,6 +67,12 @@ export async function renderToBuffer(pattern, { duration = 60, cps = 1, sampleRa
   const ctx = new OfflineAudioContext(2, frameCount, sampleRate);
   setAudioContext(ctx);
   setSuperdoughAudioController(new SuperdoughAudioController(ctx));
+
+  // Register the lfo-processor worklet on this context before rendering.
+  // superdough/worklets.mjs can't be loaded directly (bundler-only imports),
+  // so we use our self-contained src/lfo-worklet.mjs instead.
+  const lfoWorkletPath = fileURLToPath(new URL('./lfo-worklet.mjs', import.meta.url));
+  await ctx.audioWorklet.addModule(lfoWorkletPath);
 
   // initAudio returns early in Node.js (no window), which is what we want —
   // worklets are skipped, basic synthesis still works via standard AudioNodes.
