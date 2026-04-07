@@ -4,7 +4,7 @@ import { resolve, extname } from 'path';
 import { existsSync } from 'fs';
 import { Command } from 'commander';
 import { setupScope, evaluatePattern, renderToBuffer } from './renderer.js';
-import { writeWav } from './export.js';
+import { writeAudio, inferFormat } from './export.js';
 
 const program = new Command();
 
@@ -34,8 +34,8 @@ if (extname(filePath).toLowerCase() !== '.js') {
 }
 
 const outputPath = resolve(opts.output);
-if (extname(outputPath).toLowerCase() !== '.wav') {
-  console.error(`Error: --output must end in .wav (MP3/FLAC support coming in Phase 4), got: ${extname(outputPath)}`);
+if (!inferFormat(outputPath)) {
+  console.error(`Error: --output must be .wav, .mp3, .flac, or .ogg — got: ${extname(outputPath)}`);
   process.exit(1);
 }
 
@@ -59,16 +59,21 @@ if (isNaN(cps) || cps <= 0) {
 console.log(`rendel: reading ${filePath}`);
 const code = await readFile(filePath, 'utf8');
 
-console.log('rendel: setting up Strudel scope...');
-await setupScope();
+try {
+  console.log('rendel: setting up Strudel scope...');
+  await setupScope();
 
-console.log('rendel: evaluating pattern...');
-const pattern = await evaluatePattern(code);
+  console.log('rendel: evaluating pattern...');
+  const pattern = await evaluatePattern(code);
 
-console.log(`rendel: rendering ${duration}s at ${sampleRate}Hz (cps=${cps})...`);
-const buffer = await renderToBuffer(pattern, { duration, cps, sampleRate });
+  console.log(`rendel: rendering ${duration}s at ${sampleRate}Hz (cps=${cps})...`);
+  const buffer = await renderToBuffer(pattern, { duration, cps, sampleRate });
 
-console.log(`rendel: writing ${outputPath}`);
-await writeWav(buffer, outputPath);
+  console.log(`rendel: writing ${outputPath}`);
+  await writeAudio(buffer, outputPath);
 
-console.log('rendel: done.');
+  console.log('rendel: done.');
+} catch (err) {
+  console.error(`Error: ${err.message}`);
+  process.exit(1);
+}

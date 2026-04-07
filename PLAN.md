@@ -59,10 +59,10 @@ Take a `.js` file containing Strudel pattern code, run it headlessly via Node.js
 - [x] `--file`, `--duration`, `--output`, `--samplerate` flags
 - [x] Validate inputs and surface helpful errors
 
-### Phase 4 — Audio Export
-- [ ] Write raw PCM buffer to WAV (via `wav` or `audiobuffer-to-wav`)
-- [ ] Pipe to `ffmpeg` for MP3/FLAC/OGG conversion
-- [ ] Detect and warn if `ffmpeg` is not installed
+### Phase 4 — Audio Export ✓
+- [x] Write raw PCM buffer to WAV (via `wav` or `audiobuffer-to-wav`)
+- [x] Pipe to `ffmpeg` for MP3/FLAC/OGG conversion
+- [x] Detect and warn if `ffmpeg` is not installed
 
 ### Phase 5 — Polish
 - [ ] Progress bar / logging
