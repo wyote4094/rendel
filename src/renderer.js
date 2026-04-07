@@ -76,7 +76,10 @@ export async function renderToBuffer(pattern, { duration = 60, cps = 1, sampleRa
 
   // initAudio returns early in Node.js (no window), which is what we want —
   // worklets are skipped, basic synthesis still works via standard AudioNodes.
-  await initAudio({ maxPolyphony: 32 });
+  // Use a very high polyphony limit: in offline rendering, activeSoundSources
+  // never decrements during scheduling (onEnded fires during rendering, not setup),
+  // so voice stealing would prematurely kill early haps.
+  await initAudio({ maxPolyphony: 100000 });
 
   const hap2value = (hap) => {
     hap.ensureObjectValue();
