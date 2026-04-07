@@ -12,14 +12,27 @@ import { evalScope } from '@strudel/core/evaluate.mjs';
 import { transpiler, evaluate } from '@strudel/transpiler';
 import * as strudelCore from '@strudel/core';
 import * as strudelMini from '@strudel/mini';
+import * as strudelWebaudio from '@strudel/webaudio';
+import * as strudelTonal from '@strudel/tonal';
+import { registerSoundfonts } from '@strudel/soundfonts';
 
 /** Set up Strudel's global scope (note, s, slow, fast, etc.) and register built-in synths. */
 export async function setupScope() {
+  // Expose setcps as a scope function — wraps core's setCpsFunc
+  const { setCpsFunc } = strudelCore;
+  const extras = {
+    setcps: (cps) => setCpsFunc(cps),
+  };
+
   await evalScope(
     Promise.resolve(strudelCore),
     Promise.resolve(strudelMini),
+    Promise.resolve(strudelWebaudio),
+    Promise.resolve(strudelTonal),
+    Promise.resolve(extras),
   );
   registerSynthSounds();
+  registerSoundfonts();
 }
 
 /**

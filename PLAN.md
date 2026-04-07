@@ -54,10 +54,10 @@ Take a `.js` file containing Strudel pattern code, run it headlessly via Node.js
 - [x] Write a minimal working render pipeline (sine tone as smoke test)
 - [x] Evaluate `node-web-audio-api` as the OfflineAudioContext polyfill
 
-### Phase 3 — CLI Interface
-- [ ] Wire up CLI argument parsing (`commander` or `minimist`)
-- [ ] `--file`, `--duration`, `--output`, `--samplerate` flags
-- [ ] Validate inputs and surface helpful errors
+### Phase 3 — CLI Interface ✓
+- [x] Wire up CLI argument parsing (`commander` or `minimist`)
+- [x] `--file`, `--duration`, `--output`, `--samplerate` flags
+- [x] Validate inputs and surface helpful errors
 
 ### Phase 4 — Audio Export
 - [ ] Write raw PCM buffer to WAV (via `wav` or `audiobuffer-to-wav`)
