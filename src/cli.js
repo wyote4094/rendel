@@ -3,7 +3,7 @@ import { readFile } from 'fs/promises';
 import { resolve, extname } from 'path';
 import { existsSync } from 'fs';
 import { Command } from 'commander';
-import { setupScope, evaluatePattern, renderToBuffer } from './renderer.js';
+import { setupScope, evaluatePattern, renderToBuffer, getPatternCps } from './renderer.js';
 import { writeAudio, inferFormat } from './export.js';
 
 const program = new Command();
@@ -39,7 +39,9 @@ if (!inferFormat(outputPath)) {
   process.exit(1);
 }
 
-const { duration, samplerate: sampleRate, cps } = opts;
+const { duration, samplerate: sampleRate } = opts;
+const cpsExplicit = process.argv.some(a => a === '--cps');
+let cps = opts.cps;
 
 if (isNaN(duration) || duration <= 0) {
   console.error(`Error: --duration must be a positive number, got: ${opts.duration}`);
@@ -65,6 +67,14 @@ try {
 
   console.log('rendel: evaluating pattern...');
   const pattern = await evaluatePattern(code);
+
+  // If the pattern set cps via setcps() and the user didn't pass --cps, use it
+  if (!cpsExplicit) {
+    const patternCps = getPatternCps();
+    if (patternCps != null && patternCps > 0) {
+      cps = patternCps;
+    }
+  }
 
   console.log(`rendel: rendering ${duration}s at ${sampleRate}Hz (cps=${cps})...`);
   const buffer = await renderToBuffer(pattern, { duration, cps, sampleRate });

@@ -8,6 +8,13 @@ import {
   registerSynthSounds,
   errorLogger,
 } from 'superdough';
+// superdough's main export comes from dist/index.mjs (a bundle that has its own copy
+// of audioContext.mjs). superdoughoutput.mjs and helpers.mjs import from the UNBUNDLED
+// audioContext.mjs directly — a separate module instance with its own `audioContext`
+// variable. We must set the context on both so helpers.mjs doesn't fall back to
+// creating a default AudioContext (sampleRate 48000) which then causes cross-context
+// errors when connecting nodes.
+import { setAudioContext as setAudioContextUnbundled } from 'superdough/audioContext.mjs';
 import { SuperdoughAudioController } from 'superdough/superdoughoutput.mjs';
 import { evalScope } from '@strudel/core/evaluate.mjs';
 import { transpiler, evaluate } from '@strudel/transpiler';
@@ -22,7 +29,7 @@ export async function setupScope() {
   // Expose setcps as a scope function — wraps core's setCpsFunc
   const { setCpsFunc } = strudelCore;
   const extras = {
-    setcps: (cps) => setCpsFunc(cps),
+    setcps: (cps) => setCpsFunc(() => cps),
   };
 
   await evalScope(
@@ -49,6 +56,11 @@ export async function evaluatePattern(code) {
   return pattern;
 }
 
+/** Return the CPS set by the pattern via setcps(), or null if not set. */
+export function getPatternCps() {
+  return strudelCore.getCps?.() ?? null;
+}
+
 /**
  * Render a Pattern to an AudioBuffer using an OfflineAudioContext.
  *
@@ -66,20 +78,29 @@ export async function renderToBuffer(pattern, { duration = 60, cps = 1, sampleRa
 
   const ctx = new OfflineAudioContext(2, frameCount, sampleRate);
   setAudioContext(ctx);
+  setAudioContextUnbundled(ctx); // keep unbundled helpers.mjs in sync (see import comment)
   setSuperdoughAudioController(new SuperdoughAudioController(ctx));
 
-  // Register the lfo-processor worklet on this context before rendering.
-  // superdough/worklets.mjs can't be loaded directly (bundler-only imports),
-  // so we use our self-contained src/lfo-worklet.mjs instead.
-  const lfoWorkletPath = fileURLToPath(new URL('./lfo-worklet.mjs', import.meta.url));
-  await ctx.audioWorklet.addModule(lfoWorkletPath);
+  // superdough/worklets.mjs can't be loaded directly (bundler-only imports) and
+  // the bundled data: URL worklet can't be resolved by node-web-audio-api.
+  // We extracted the pre-bundled worklet code to src/superdough-worklets.js so it
+  // can be loaded as a file. This includes all processors: shape, djf, crush, etc.
+  const workletsPath = fileURLToPath(new URL('./superdough-worklets.js', import.meta.url));
+  await ctx.audioWorklet.addModule(workletsPath);
 
-  // initAudio returns early in Node.js (no window), which is what we want —
-  // worklets are skipped, basic synthesis still works via standard AudioNodes.
-  // Use a very high polyphony limit: in offline rendering, activeSoundSources
-  // never decrements during scheduling (onEnded fires during rendering, not setup),
-  // so voice stealing would prematurely kill early haps.
-  await initAudio({ maxPolyphony: 100000 });
+  // disableWorklets: prevents superdough from trying to re-load the data: URL
+  // worklet (which would fail). We already loaded the processors above.
+  // maxPolyphony: in offline rendering, activeSoundSources never decrements
+  // during scheduling (onEnded fires during rendering, not setup), so voice
+  // stealing would prematurely kill early haps.
+  // Suppress superdough's noisy "AudioWorklets disabled" log during initAudio
+  const _log = console.log;
+  console.log = (...args) => {
+    if (typeof args[0] === 'string' && args[0].includes('AudioWorklets disabled')) return;
+    _log(...args);
+  };
+  await initAudio({ maxPolyphony: 100000, disableWorklets: true });
+  console.log = _log;
 
   const hap2value = (hap) => {
     hap.ensureObjectValue();
@@ -111,6 +132,7 @@ export async function renderToBuffer(pattern, { duration = 60, cps = 1, sampleRa
 
   // Clean up
   setAudioContext(null);
+  setAudioContextUnbundled(null);
   setSuperdoughAudioController(null);
 
   return buffer;
