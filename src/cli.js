@@ -14,8 +14,9 @@ program
   .requiredOption('-f, --file <path>', 'path to .js Strudel pattern file')
   .requiredOption('-o, --output <path>', 'output file path (e.g. out.wav)')
   .option('-d, --duration <seconds>', 'render duration in seconds', parseFloat, 60)
-  .option('-r, --samplerate <hz>', 'sample rate in Hz', parseInt, 44100)
-  .option('--cps <value>', 'cycles per second (tempo)', parseFloat, 1);
+  .option('-r, --samplerate <hz>', 'sample rate in Hz', (v) => parseInt(v, 10), 44100)
+  .option('--cps <value>', 'cycles per second (tempo)', parseFloat, 1)
+  .option('-p, --progress', 'log per-chunk timing', false);
 
 program.parse();
 
@@ -61,6 +62,8 @@ if (isNaN(cps) || cps <= 0) {
 console.log(`rendel: reading ${filePath}`);
 const code = await readFile(filePath, 'utf8');
 
+const t0 = Date.now();
+
 try {
   console.log('rendel: setting up Strudel scope...');
   await setupScope();
@@ -77,12 +80,13 @@ try {
   }
 
   console.log(`rendel: rendering ${duration}s at ${sampleRate}Hz (cps=${cps})...`);
-  const buffer = await renderToBuffer(pattern, { duration, cps, sampleRate });
+  const buffer = await renderToBuffer(pattern, { duration, cps, sampleRate, verbose: opts.progress });
 
   console.log(`rendel: writing ${outputPath}`);
   await writeAudio(buffer, outputPath);
 
-  console.log('rendel: done.');
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+  console.log(`rendel: done in ${elapsed}s.`);
 } catch (err) {
   console.error(`Error: ${err.message}`);
   process.exit(1);

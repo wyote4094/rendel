@@ -24,6 +24,29 @@ import * as strudelWebaudio from '@strudel/webaudio';
 import * as strudelTonal from '@strudel/tonal';
 import { registerSoundfonts } from '@strudel/soundfonts';
 
+// --- WeakRef tracking ---
+// superdough's node pool (`st`), voice tracking (`Ne`), and other internals
+// retain WeakRefs to nodes from previous contexts. Between chunks, those stale
+// refs would cause "nodes from different contexts" errors when reused. We
+// intercept WeakRef construction and, between chunks, neuter each tracked ref
+// so deref() returns undefined and superdough treats its pool as empty.
+const trackedRefs = new Set();
+const NativeWeakRef = globalThis.WeakRef;
+class TrackingWeakRef extends NativeWeakRef {
+  constructor(target) {
+    super(target);
+    trackedRefs.add(this);
+  }
+}
+globalThis.WeakRef = TrackingWeakRef;
+
+function invalidateAllRefs() {
+  for (const ref of trackedRefs) {
+    ref.deref = () => undefined;
+  }
+  trackedRefs.clear();
+}
+
 /** Set up Strudel's global scope (note, s, slow, fast, etc.) and register built-in synths. */
 export async function setupScope() {
   // Expose setcps as a scope function — wraps core's setCpsFunc
@@ -45,8 +68,6 @@ export async function setupScope() {
 
 /**
  * Evaluate a string of Strudel pattern code and return a Pattern.
- * The code should be a single expression, e.g.:
- *   note("c3 e3 g3").s("sine").slow(2)
  */
 export async function evaluatePattern(code) {
   const { pattern } = await evaluate(code, transpiler);
@@ -61,38 +82,16 @@ export function getPatternCps() {
   return strudelCore.getCps?.() ?? null;
 }
 
-/**
- * Render a Pattern to an AudioBuffer using an OfflineAudioContext.
- *
- * @param {import('@strudel/core').Pattern} pattern
- * @param {object} options
- * @param {number} options.duration  - render duration in seconds
- * @param {number} options.cps       - cycles per second (tempo)
- * @param {number} options.sampleRate
- * @returns {Promise<AudioBuffer>}
- */
-export async function renderToBuffer(pattern, { duration = 60, cps = 1, sampleRate = 44100 } = {}) {
-  const begin = 0;
-  const end = duration * cps; // in cycles
-  const frameCount = Math.ceil(duration * sampleRate);
-
+async function renderChunk({
+  pattern, beginCyc, endCyc, cps, chunkDur, tailDur, sampleRate, workletsPath,
+}) {
+  const frameCount = Math.ceil((chunkDur + tailDur) * sampleRate);
   const ctx = new OfflineAudioContext(2, frameCount, sampleRate);
   setAudioContext(ctx);
-  setAudioContextUnbundled(ctx); // keep unbundled helpers.mjs in sync (see import comment)
+  setAudioContextUnbundled(ctx);
   setSuperdoughAudioController(new SuperdoughAudioController(ctx));
-
-  // superdough/worklets.mjs can't be loaded directly (bundler-only imports) and
-  // the bundled data: URL worklet can't be resolved by node-web-audio-api.
-  // We extracted the pre-bundled worklet code to src/superdough-worklets.js so it
-  // can be loaded as a file. This includes all processors: shape, djf, crush, etc.
-  const workletsPath = fileURLToPath(new URL('./superdough-worklets.js', import.meta.url));
   await ctx.audioWorklet.addModule(workletsPath);
 
-  // disableWorklets: prevents superdough from trying to re-load the data: URL
-  // worklet (which would fail). We already loaded the processors above.
-  // maxPolyphony: in offline rendering, activeSoundSources never decrements
-  // during scheduling (onEnded fires during rendering, not setup), so voice
-  // stealing would prematurely kill early haps.
   // Suppress superdough's noisy "AudioWorklets disabled" log during initAudio
   const _log = console.log;
   console.log = (...args) => {
@@ -107,33 +106,97 @@ export async function renderToBuffer(pattern, { duration = 60, cps = 1, sampleRa
     return hap.value;
   };
 
-  // Sort by onset time — required for controls like `cut` that depend on graph state
+  // Query only the haps that onset within this chunk window.
   const haps = pattern
-    .queryArc(begin, end, { _cps: cps })
+    .queryArc(beginCyc, endCyc, { _cps: cps })
+    .filter((h) => h.hasOnset())
     .sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf());
 
   for (const hap of haps) {
-    if (hap.hasOnset()) {
-      try {
-        await superdough(
-          hap2value(hap),
-          (hap.whole.begin.valueOf() - begin) / cps,
-          hap.duration / cps,
-          cps,
-          (hap.whole?.begin.valueOf() - begin) / cps,
-        );
-      } catch (err) {
-        errorLogger(err, 'rendel');
-      }
+    try {
+      await superdough(
+        hap2value(hap),
+        (hap.whole.begin.valueOf() - beginCyc) / cps,
+        hap.duration / cps,
+        cps,
+        (hap.whole?.begin.valueOf() - beginCyc) / cps,
+      );
+    } catch (err) {
+      errorLogger(err, 'rendel');
     }
   }
 
-  const buffer = await ctx.startRendering();
+  return ctx.startRendering();
+}
 
-  // Clean up
-  setAudioContext(null);
-  setAudioContextUnbundled(null);
-  setSuperdoughAudioController(null);
+/**
+ * Render a Pattern by chunking the timeline into short windows, each with its
+ * own OfflineAudioContext running the real effect worklets. Chunk outputs
+ * (including a per-chunk tail) are summed into a single stereo buffer.
+ *
+ * Tradeoff: reverb/delay tails that extend past `tailDur` beyond a chunk
+ * boundary get truncated. For most patterns this is inaudible.
+ */
+export async function renderToBuffer(pattern, { duration = 60, cps = 1, sampleRate = 44100, verbose = false } = {}) {
+  const workletsPath = fileURLToPath(new URL('./superdough-worklets.js', import.meta.url));
 
-  return buffer;
+  const chunkDur = 3;
+  const tailDur = 2;
+  const totalFrames = Math.ceil(duration * sampleRate);
+  const outL = new Float32Array(totalFrames);
+  const outR = new Float32Array(totalFrames);
+
+  const numChunks = Math.ceil(duration / chunkDur);
+
+  for (let i = 0; i < numChunks; i++) {
+    const tSec = i * chunkDur;
+    const thisChunkDur = Math.min(chunkDur, duration - tSec);
+    const beginCyc = tSec * cps;
+    const endCyc = (tSec + thisChunkDur) * cps;
+
+    const t0 = Date.now();
+    const buf = await renderChunk({
+      pattern,
+      beginCyc,
+      endCyc,
+      cps,
+      chunkDur: thisChunkDur,
+      tailDur,
+      sampleRate,
+      workletsPath,
+    });
+
+    const L = buf.getChannelData(0);
+    const R = buf.getChannelData(1);
+    const offset = Math.round(tSec * sampleRate);
+    const n = Math.min(L.length, totalFrames - offset);
+    for (let j = 0; j < n; j++) {
+      outL[offset + j] += L[j];
+      outR[offset + j] += R[j];
+    }
+
+    setAudioContext(null);
+    setAudioContextUnbundled(null);
+    setSuperdoughAudioController(null);
+    invalidateAllRefs();
+
+    if (verbose) {
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+      console.log(
+        `rendel: chunk ${i + 1}/${numChunks} ` +
+        `(${tSec.toFixed(1)}–${(tSec + thisChunkDur).toFixed(1)}s) ` +
+        `in ${elapsed}s`,
+      );
+    }
+  }
+
+  // Return an AudioBuffer-compatible plain object — export.js only uses
+  // numberOfChannels, sampleRate, and getChannelData().
+  return {
+    numberOfChannels: 2,
+    sampleRate,
+    length: totalFrames,
+    duration,
+    getChannelData(ch) { return ch === 0 ? outL : outR; },
+  };
 }
