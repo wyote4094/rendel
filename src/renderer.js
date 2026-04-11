@@ -83,9 +83,9 @@ export function getPatternCps() {
 }
 
 async function renderChunk({
-  pattern, beginCyc, endCyc, cps, chunkDur, tailDur, sampleRate, workletsPath,
+  haps, beginCyc, cps, renderDur, sampleRate, workletsPath,
 }) {
-  const frameCount = Math.ceil((chunkDur + tailDur) * sampleRate);
+  const frameCount = Math.ceil(renderDur * sampleRate);
   const ctx = new OfflineAudioContext(2, frameCount, sampleRate);
   setAudioContext(ctx);
   setAudioContextUnbundled(ctx);
@@ -106,18 +106,12 @@ async function renderChunk({
     return hap.value;
   };
 
-  // Query only the haps that onset within this chunk window.
-  const haps = pattern
-    .queryArc(beginCyc, endCyc, { _cps: cps })
-    .filter((h) => h.hasOnset())
-    .sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf());
-
   for (const hap of haps) {
     try {
       await superdough(
         hap2value(hap),
         (hap.whole.begin.valueOf() - beginCyc) / cps,
-        hap.duration / cps,
+        hap.duration.valueOf() / cps,
         cps,
         (hap.whole?.begin.valueOf() - beginCyc) / cps,
       );
@@ -131,17 +125,18 @@ async function renderChunk({
 
 /**
  * Render a Pattern by chunking the timeline into short windows, each with its
- * own OfflineAudioContext running the real effect worklets. Chunk outputs
- * (including a per-chunk tail) are summed into a single stereo buffer.
+ * own OfflineAudioContext running the real effect worklets. Chunk outputs are
+ * summed into a single stereo buffer.
  *
- * Tradeoff: reverb/delay tails that extend past `tailDur` beyond a chunk
- * boundary get truncated. For most patterns this is inaudible.
+ * The tail for each chunk is computed dynamically from the longest hap in that
+ * chunk, so long-duration notes (e.g. slow pads) play their full length rather
+ * than being cut off at a fixed tail window.
  */
 export async function renderToBuffer(pattern, { duration = 60, cps = 1, sampleRate = 44100, verbose = false } = {}) {
   const workletsPath = fileURLToPath(new URL('./superdough-worklets.js', import.meta.url));
 
   const chunkDur = 3;
-  const tailDur = 2;
+  const minTail = 2;   // minimum extra seconds beyond chunkDur for reverb/delay tails
   const totalFrames = Math.ceil(duration * sampleRate);
   const outL = new Float32Array(totalFrames);
   const outR = new Float32Array(totalFrames);
@@ -154,14 +149,30 @@ export async function renderToBuffer(pattern, { duration = 60, cps = 1, sampleRa
     const beginCyc = tSec * cps;
     const endCyc = (tSec + thisChunkDur) * cps;
 
+    // Query haps with onset in this chunk window.
+    const haps = pattern
+      .queryArc(beginCyc, endCyc, { _cps: cps })
+      .filter((h) => h.hasOnset())
+      .sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf());
+
+    // Compute the tail needed to let the longest hap fully play out.
+    // onsetInChunk + hapDuration gives how far into the chunk's timeline the
+    // sound ends; subtract chunkDur to get the extra time needed.
+    let latestEndSec = thisChunkDur + minTail;
+    for (const hap of haps) {
+      const onsetSec = (hap.whole.begin.valueOf() - beginCyc) / cps;
+      const hapDurSec = hap.duration.valueOf() / cps;
+      latestEndSec = Math.max(latestEndSec, onsetSec + hapDurSec + minTail);
+    }
+    // Cap at the output duration so we never render past the end of the file.
+    const renderDur = Math.min(latestEndSec, duration - tSec);
+
     const t0 = Date.now();
     const buf = await renderChunk({
-      pattern,
+      haps,
       beginCyc,
-      endCyc,
       cps,
-      chunkDur: thisChunkDur,
-      tailDur,
+      renderDur,
       sampleRate,
       workletsPath,
     });
@@ -184,8 +195,8 @@ export async function renderToBuffer(pattern, { duration = 60, cps = 1, sampleRa
       const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
       console.log(
         `rendel: chunk ${i + 1}/${numChunks} ` +
-        `(${tSec.toFixed(1)}–${(tSec + thisChunkDur).toFixed(1)}s) ` +
-        `in ${elapsed}s`,
+        `(${tSec.toFixed(1)}–${(tSec + thisChunkDur).toFixed(1)}s, ` +
+        `render=${renderDur.toFixed(1)}s) in ${elapsed}s`,
       );
     }
   }
