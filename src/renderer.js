@@ -125,12 +125,16 @@ async function renderChunk({
 
   for (const hap of haps) {
     try {
+      // Clamp onset to 0 — floating-point imprecision can produce values like
+      // -2.8e-16 when a hap onset exactly coincides with beginCyc (common with
+      // triplet/quintuplet rhythms), which superdough rejects as "in the past".
+      const onsetSec = Math.max(0, (hap.whole.begin.valueOf() - beginCyc) / cps);
       await superdough(
         hap2value(hap),
-        (hap.whole.begin.valueOf() - beginCyc) / cps,
+        onsetSec,
         hap.duration.valueOf() / cps,
         cps,
-        (hap.whole?.begin.valueOf() - beginCyc) / cps,
+        onsetSec,
       );
     } catch (err) {
       errorLogger(err, 'rendel');
