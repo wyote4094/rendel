@@ -40,9 +40,26 @@ class TrackingWeakRef extends NativeWeakRef {
 }
 globalThis.WeakRef = TrackingWeakRef;
 
+// Returns true for objects that belong to a completed audio context and must
+// not be handed to the next chunk. This deliberately excludes internals from
+// Node.js (undici HTTP parsers, etc.) which also use WeakRef.
+function isAudioRelated(target) {
+  if (!target || typeof target !== 'object') return false;
+  // AudioNode subclasses (AudioWorkletNode, GainNode, OscillatorNode, …) all
+  // expose a `context` property.
+  if ('context' in target) return true;
+  // superdough voice-tracking entries are plain objects { node, stop, nodes }.
+  if ('node' in target && 'stop' in target) return true;
+  return false;
+}
+
 function invalidateAllRefs() {
   for (const ref of trackedRefs) {
-    ref.deref = () => undefined;
+    // Use the native deref so we don't hit our own patched version.
+    const target = NativeWeakRef.prototype.deref.call(ref);
+    if (isAudioRelated(target)) {
+      ref.deref = () => undefined;
+    }
   }
   trackedRefs.clear();
 }

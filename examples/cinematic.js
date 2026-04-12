@@ -1,14 +1,14 @@
 // "cinematic" — high complexity
 // Orchestral mood piece using GM soundfonts: strings, piano, and bass
 setcps(0.45)
-let harmony = chord("<Cm Abmaj7 Ebmaj7 Bb>/4").dict('ireal')
+let harmony = chord("<C- Ab^7 Eb^7 Bb>/4").dict('ireal')
 stack(
   // slow string pads
-  harmony.voicing().s("gm_string_ensemble1")
+  harmony.voicing().s("gm_string_ensemble_1")
     .room(0.85).gain(0.4),
   // piano counter-melody
   harmony.n("[0 2 4 3]*2").anchor("C5").voicing()
-    .s("gm_acoustic_grand_piano")
+    .s("gm_piano")
     .room(0.5).delay(0.2).delaytime(0.5).gain(0.5),
   // pizzicato accent on beat 1
   harmony.n("0").anchor("C4").voicing()
